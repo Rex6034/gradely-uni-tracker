@@ -118,7 +118,7 @@ const POS = () => {
         .from('pharmacies')
         .select('id')
         .eq('user_id', user.id)
-        .single();
+        .maybeSingle();
 
       if (!pharmacy) return;
 
@@ -292,7 +292,7 @@ const POS = () => {
         .from('pharmacies')
         .select('id')
         .eq('user_id', user.id)
-        .single();
+        .maybeSingle();
 
       if (!pharmacy) throw new Error("Pharmacy not found");
 
