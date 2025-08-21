@@ -6,7 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Edit, AlertTriangle, Package } from "lucide-react";
+import { Plus, Edit, AlertTriangle, Package, Save, X, Search } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -30,7 +30,10 @@ const InventoryManager = () => {
   const [medicines, setMedicines] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [isAddMedicineDialogOpen, setIsAddMedicineDialogOpen] = useState(false);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [selectedMedicine, setSelectedMedicine] = useState("");
+  const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
   const [formData, setFormData] = useState({
     batch_number: "",
     expiry_date: "",
@@ -40,12 +43,78 @@ const InventoryManager = () => {
     minimum_stock_level: "10",
     supplier_name: "",
   });
+  const [medicineFormData, setMedicineFormData] = useState({
+    name: "",
+    generic_name: "",
+    dosage: "",
+    form: "",
+    brand_id: "",
+    category_id: "",
+    requires_prescription: false,
+  });
+  const [brands, setBrands] = useState<any[]>([]);
+  const [categories, setCategories] = useState<any[]>([]);
+  const [filteredInventory, setFilteredInventory] = useState<InventoryItem[]>([]);
+  const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>("all");
+  const [selectedBrandFilter, setSelectedBrandFilter] = useState<string>("all");
+  const [searchTerm, setSearchTerm] = useState("");
   const { toast } = useToast();
 
   useEffect(() => {
     fetchInventory();
     fetchMedicines();
+    fetchBrands();
+    fetchCategories();
   }, []);
+
+  // Filter inventory whenever inventory or filter values change
+  useEffect(() => {
+    let filtered = inventory;
+
+    // Debug logging
+    console.log('Filtering inventory:', {
+      totalItems: inventory.length,
+      searchTerm,
+      selectedCategoryFilter,
+      selectedBrandFilter,
+      sampleItems: inventory.slice(0, 2).map(item => ({
+        name: item.medicine_name,
+        brand: item.brand_name,
+        category: item.category_name
+      }))
+    });
+
+    // Filter by search term
+    if (searchTerm) {
+      const searchLower = searchTerm.toLowerCase().trim();
+      filtered = filtered.filter(item =>
+        item.medicine_name.toLowerCase().includes(searchLower) ||
+        item.brand_name.toLowerCase().includes(searchLower) ||
+        item.category_name.toLowerCase().includes(searchLower) ||
+        item.batch_number.toLowerCase().includes(searchLower)
+      );
+      console.log('After search filter:', filtered.length, 'items');
+    }
+
+    // Filter by category
+    if (selectedCategoryFilter !== "all") {
+      filtered = filtered.filter(item => 
+        item.category_name.toLowerCase() === selectedCategoryFilter.toLowerCase()
+      );
+      console.log('After category filter:', filtered.length, 'items');
+    }
+
+    // Filter by brand
+    if (selectedBrandFilter !== "all") {
+      filtered = filtered.filter(item => 
+        item.brand_name.toLowerCase() === selectedBrandFilter.toLowerCase()
+      );
+      console.log('After brand filter:', filtered.length, 'items');
+    }
+
+    console.log('Final filtered results:', filtered.length, 'items');
+    setFilteredInventory(filtered);
+  }, [inventory, searchTerm, selectedCategoryFilter, selectedBrandFilter]);
 
   const fetchInventory = async () => {
     try {
@@ -115,6 +184,32 @@ const InventoryManager = () => {
       if (data) setMedicines(data);
     } catch (error) {
       console.error('Error fetching medicines:', error);
+    }
+  };
+
+  const fetchBrands = async () => {
+    try {
+      const { data } = await supabase
+        .from('medicine_brands')
+        .select('*')
+        .order('name');
+
+      if (data) setBrands(data);
+    } catch (error) {
+      console.error('Error fetching brands:', error);
+    }
+  };
+
+  const fetchCategories = async () => {
+    try {
+      const { data } = await supabase
+        .from('medicine_categories')
+        .select('*')
+        .order('name');
+
+      if (data) setCategories(data);
+    } catch (error) {
+      console.error('Error fetching categories:', error);
     }
   };
 
@@ -240,6 +335,112 @@ const InventoryManager = () => {
     }
   };
 
+  const handleEditInventory = (item: InventoryItem) => {
+    setEditingItem(item);
+    setFormData({
+      batch_number: item.batch_number,
+      expiry_date: item.expiry_date,
+      purchase_price: item.purchase_price.toString(),
+      selling_price: item.selling_price.toString(),
+      quantity_in_stock: item.quantity_in_stock.toString(),
+      minimum_stock_level: item.minimum_stock_level.toString(),
+      supplier_name: item.supplier_name,
+    });
+    setIsEditDialogOpen(true);
+  };
+
+  const handleUpdateInventory = async () => {
+    if (!editingItem) return;
+
+    try {
+      const { error } = await supabase
+        .from('pharmacy_inventory')
+        .update({
+          batch_number: formData.batch_number,
+          expiry_date: formData.expiry_date,
+          purchase_price: parseFloat(formData.purchase_price) || 0,
+          selling_price: parseFloat(formData.selling_price),
+          quantity_in_stock: parseInt(formData.quantity_in_stock),
+          minimum_stock_level: parseInt(formData.minimum_stock_level) || 10,
+          supplier_name: formData.supplier_name || '',
+        })
+        .eq('id', editingItem.id);
+
+      if (error) throw error;
+
+      toast({
+        title: "Success",
+        description: "Inventory item updated successfully",
+      });
+
+      setIsEditDialogOpen(false);
+      setEditingItem(null);
+      await fetchInventory();
+
+    } catch (error: any) {
+      console.error('Error updating inventory:', error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update inventory item",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleAddMedicine = async () => {
+    if (!medicineFormData.name || !medicineFormData.brand_id || !medicineFormData.category_id) {
+      toast({
+        title: "Missing Information",
+        description: "Please fill in all required fields",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('medicines')
+        .insert({
+          name: medicineFormData.name,
+          generic_name: medicineFormData.generic_name,
+          dosage: medicineFormData.dosage,
+          form: medicineFormData.form,
+          brand_id: medicineFormData.brand_id,
+          category_id: medicineFormData.category_id,
+          requires_prescription: medicineFormData.requires_prescription,
+        })
+        .select();
+
+      if (error) throw error;
+
+      toast({
+        title: "Success",
+        description: "Medicine added successfully",
+      });
+
+      setIsAddMedicineDialogOpen(false);
+      setMedicineFormData({
+        name: "",
+        generic_name: "",
+        dosage: "",
+        form: "",
+        brand_id: "",
+        category_id: "",
+        requires_prescription: false,
+      });
+      
+      await fetchMedicines();
+
+    } catch (error: any) {
+      console.error('Error adding medicine:', error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to add medicine",
+        variant: "destructive",
+      });
+    }
+  };
+
   const isLowStock = (item: InventoryItem) => {
     return item.quantity_in_stock <= item.minimum_stock_level;
   };
@@ -270,116 +471,380 @@ const InventoryManager = () => {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold">Inventory Management</h2>
-        <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="mr-2 h-4 w-4" />
-              Add Inventory
+        <div className="flex gap-2">
+          <Dialog open={isAddMedicineDialogOpen} onOpenChange={setIsAddMedicineDialogOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline">
+                <Plus className="mr-2 h-4 w-4" />
+                Add Medicine
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-md">
+              <DialogHeader>
+                <DialogTitle>Add New Medicine</DialogTitle>
+                <DialogDescription>
+                  Add a new medicine to the database
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div>
+                  <Label>Medicine Name *</Label>
+                  <Input
+                    value={medicineFormData.name}
+                    onChange={(e) => setMedicineFormData(prev => ({ ...prev, name: e.target.value }))}
+                    placeholder="Medicine name"
+                  />
+                </div>
+                
+                <div>
+                  <Label>Generic Name</Label>
+                  <Input
+                    value={medicineFormData.generic_name}
+                    onChange={(e) => setMedicineFormData(prev => ({ ...prev, generic_name: e.target.value }))}
+                    placeholder="Generic name"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label>Dosage</Label>
+                    <Input
+                      value={medicineFormData.dosage}
+                      onChange={(e) => setMedicineFormData(prev => ({ ...prev, dosage: e.target.value }))}
+                      placeholder="e.g., 500mg"
+                    />
+                  </div>
+                  <div>
+                    <Label>Form</Label>
+                    <Input
+                      value={medicineFormData.form}
+                      onChange={(e) => setMedicineFormData(prev => ({ ...prev, form: e.target.value }))}
+                      placeholder="e.g., Tablet"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label>Brand *</Label>
+                    <Select value={medicineFormData.brand_id} onValueChange={(value) => setMedicineFormData(prev => ({ ...prev, brand_id: value }))}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select brand" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {brands.map((brand) => (
+                          <SelectItem key={brand.id} value={brand.id}>
+                            {brand.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label>Category *</Label>
+                    <Select value={medicineFormData.category_id} onValueChange={(value) => setMedicineFormData(prev => ({ ...prev, category_id: value }))}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select category" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {categories.map((category) => (
+                          <SelectItem key={category.id} value={category.id}>
+                            {category.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    id="requires_prescription"
+                    checked={medicineFormData.requires_prescription}
+                    onChange={(e) => setMedicineFormData(prev => ({ ...prev, requires_prescription: e.target.checked }))}
+                    className="rounded"
+                  />
+                  <Label htmlFor="requires_prescription">Requires Prescription</Label>
+                </div>
+
+                <Button onClick={handleAddMedicine} className="w-full">
+                  Add Medicine
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+
+          <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+            <DialogTrigger asChild>
+              <Button>
+                <Plus className="mr-2 h-4 w-4" />
+                Add Inventory
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-md">
+              <DialogHeader>
+                <DialogTitle>Add Inventory Item</DialogTitle>
+                <DialogDescription>
+                  Add a new medicine to your pharmacy inventory
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div>
+                  <Label>Medicine</Label>
+                  <Select value={selectedMedicine} onValueChange={setSelectedMedicine}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a medicine" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {medicines.map((medicine) => (
+                        <SelectItem key={medicine.id} value={medicine.id}>
+                          {medicine.name} - {medicine.medicine_brands?.name || 'Generic'}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label>Batch Number</Label>
+                    <Input
+                      value={formData.batch_number}
+                      onChange={(e) => setFormData(prev => ({ ...prev, batch_number: e.target.value }))}
+                      placeholder="Batch #"
+                    />
+                  </div>
+                  <div>
+                    <Label>Expiry Date</Label>
+                    <Input
+                      type="date"
+                      value={formData.expiry_date}
+                      onChange={(e) => setFormData(prev => ({ ...prev, expiry_date: e.target.value }))}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label>Purchase Price</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={formData.purchase_price}
+                      onChange={(e) => setFormData(prev => ({ ...prev, purchase_price: e.target.value }))}
+                      placeholder="0.00"
+                    />
+                  </div>
+                  <div>
+                    <Label>Selling Price</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={formData.selling_price}
+                      onChange={(e) => setFormData(prev => ({ ...prev, selling_price: e.target.value }))}
+                      placeholder="0.00"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label>Quantity</Label>
+                    <Input
+                      type="number"
+                      value={formData.quantity_in_stock}
+                      onChange={(e) => setFormData(prev => ({ ...prev, quantity_in_stock: e.target.value }))}
+                      placeholder="0"
+                    />
+                  </div>
+                  <div>
+                    <Label>Min Stock Level</Label>
+                    <Input
+                      type="number"
+                      value={formData.minimum_stock_level}
+                      onChange={(e) => setFormData(prev => ({ ...prev, minimum_stock_level: e.target.value }))}
+                      placeholder="10"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <Label>Supplier Name</Label>
+                  <Input
+                    value={formData.supplier_name}
+                    onChange={(e) => setFormData(prev => ({ ...prev, supplier_name: e.target.value }))}
+                    placeholder="Supplier name"
+                  />
+                </div>
+
+                <Button onClick={handleAddInventory} className="w-full">
+                  Add to Inventory
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+        </div>
+      </div>
+
+      
+
+      {/* Search and Filter Section */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Search & Filter</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-col sm:flex-row gap-4">
+            {/* Search */}
+            <div className="flex-1 relative">
+              <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+              <Input
+                placeholder="Search medicines, brands, batches..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+            
+            {/* Category Filter */}
+            <Select value={selectedCategoryFilter} onValueChange={setSelectedCategoryFilter}>
+              <SelectTrigger className="w-48">
+                <SelectValue placeholder="All Categories" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Categories</SelectItem>
+                {categories.map(category => (
+                  <SelectItem key={category.id} value={category.name}>
+                    {category.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {/* Brand Filter */}
+            <Select value={selectedBrandFilter} onValueChange={setSelectedBrandFilter}>
+              <SelectTrigger className="w-48">
+                <SelectValue placeholder="All Brands" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Brands</SelectItem>
+                {brands.map(brand => (
+                  <SelectItem key={brand.id} value={brand.name}>
+                    {brand.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {/* Clear Filters Button */}
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                setSearchTerm("");
+                setSelectedCategoryFilter("all");
+                setSelectedBrandFilter("all");
+              }}
+            >
+              Clear Filters
             </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-md">
-            <DialogHeader>
-              <DialogTitle>Add Inventory Item</DialogTitle>
-              <DialogDescription>
-                Add a new medicine to your pharmacy inventory
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4">
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Edit Inventory Dialog */}
+      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Inventory Item</DialogTitle>
+            <DialogDescription>
+              Update inventory item details
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label>Medicine</Label>
-                <Select value={selectedMedicine} onValueChange={setSelectedMedicine}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select a medicine" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {medicines.map((medicine) => (
-                      <SelectItem key={medicine.id} value={medicine.id}>
-                        {medicine.name} - {medicine.medicine_brands?.name || 'Generic'}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label>Batch Number</Label>
-                  <Input
-                    value={formData.batch_number}
-                    onChange={(e) => setFormData(prev => ({ ...prev, batch_number: e.target.value }))}
-                    placeholder="Batch #"
-                  />
-                </div>
-                <div>
-                  <Label>Expiry Date</Label>
-                  <Input
-                    type="date"
-                    value={formData.expiry_date}
-                    onChange={(e) => setFormData(prev => ({ ...prev, expiry_date: e.target.value }))}
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label>Purchase Price</Label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={formData.purchase_price}
-                    onChange={(e) => setFormData(prev => ({ ...prev, purchase_price: e.target.value }))}
-                    placeholder="0.00"
-                  />
-                </div>
-                <div>
-                  <Label>Selling Price</Label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={formData.selling_price}
-                    onChange={(e) => setFormData(prev => ({ ...prev, selling_price: e.target.value }))}
-                    placeholder="0.00"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label>Quantity</Label>
-                  <Input
-                    type="number"
-                    value={formData.quantity_in_stock}
-                    onChange={(e) => setFormData(prev => ({ ...prev, quantity_in_stock: e.target.value }))}
-                    placeholder="0"
-                  />
-                </div>
-                <div>
-                  <Label>Min Stock Level</Label>
-                  <Input
-                    type="number"
-                    value={formData.minimum_stock_level}
-                    onChange={(e) => setFormData(prev => ({ ...prev, minimum_stock_level: e.target.value }))}
-                    placeholder="10"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <Label>Supplier Name</Label>
+                <Label>Batch Number</Label>
                 <Input
-                  value={formData.supplier_name}
-                  onChange={(e) => setFormData(prev => ({ ...prev, supplier_name: e.target.value }))}
-                  placeholder="Supplier name"
+                  value={formData.batch_number}
+                  onChange={(e) => setFormData(prev => ({ ...prev, batch_number: e.target.value }))}
+                  placeholder="Batch #"
                 />
               </div>
+              <div>
+                <Label>Expiry Date</Label>
+                <Input
+                  type="date"
+                  value={formData.expiry_date}
+                  onChange={(e) => setFormData(prev => ({ ...prev, expiry_date: e.target.value }))}
+                />
+              </div>
+            </div>
 
-              <Button onClick={handleAddInventory} className="w-full">
-                Add to Inventory
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Purchase Price</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={formData.purchase_price}
+                  onChange={(e) => setFormData(prev => ({ ...prev, purchase_price: e.target.value }))}
+                  placeholder="0.00"
+                />
+              </div>
+              <div>
+                <Label>Selling Price</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={formData.selling_price}
+                  onChange={(e) => setFormData(prev => ({ ...prev, selling_price: e.target.value }))}
+                  placeholder="0.00"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Quantity</Label>
+                <Input
+                  type="number"
+                  value={formData.quantity_in_stock}
+                  onChange={(e) => setFormData(prev => ({ ...prev, quantity_in_stock: e.target.value }))}
+                  placeholder="0"
+                />
+              </div>
+              <div>
+                <Label>Min Stock Level</Label>
+                <Input
+                  type="number"
+                  value={formData.minimum_stock_level}
+                  onChange={(e) => setFormData(prev => ({ ...prev, minimum_stock_level: e.target.value }))}
+                  placeholder="10"
+                />
+              </div>
+            </div>
+
+            <div>
+              <Label>Supplier Name</Label>
+              <Input
+                value={formData.supplier_name}
+                onChange={(e) => setFormData(prev => ({ ...prev, supplier_name: e.target.value }))}
+                placeholder="Supplier name"
+              />
+            </div>
+
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setIsEditDialogOpen(false)} className="flex-1">
+                Cancel
+              </Button>
+              <Button onClick={handleUpdateInventory} className="flex-1">
+                Update Inventory
               </Button>
             </div>
-          </DialogContent>
-        </Dialog>
-      </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -388,8 +853,13 @@ const InventoryManager = () => {
             <div className="flex items-center">
               <Package className="h-8 w-8 text-blue-500 mr-3" />
               <div>
-                <p className="text-sm text-gray-600">Total Items</p>
-                <p className="text-2xl font-bold">{inventory.length}</p>
+                <p className="text-sm text-gray-600">
+                  {searchTerm || selectedCategoryFilter !== "all" || selectedBrandFilter !== "all" ? "Filtered Items" : "Total Items"}
+                </p>
+                <p className="text-2xl font-bold">{filteredInventory.length}</p>
+                {(searchTerm || selectedCategoryFilter !== "all" || selectedBrandFilter !== "all") && (
+                  <p className="text-xs text-gray-500">of {inventory.length} total</p>
+                )}
               </div>
             </div>
           </CardContent>
@@ -402,7 +872,7 @@ const InventoryManager = () => {
               <div>
                 <p className="text-sm text-gray-600">Low Stock</p>
                 <p className="text-2xl font-bold text-orange-500">
-                  {inventory.filter(isLowStock).length}
+                  {filteredInventory.filter(isLowStock).length}
                 </p>
               </div>
             </div>
@@ -416,7 +886,7 @@ const InventoryManager = () => {
               <div>
                 <p className="text-sm text-gray-600">Expiring Soon</p>
                 <p className="text-2xl font-bold text-yellow-500">
-                  {inventory.filter(item => isExpiringSoon(item.expiry_date)).length}
+                  {filteredInventory.filter(item => isExpiringSoon(item.expiry_date)).length}
                 </p>
               </div>
             </div>
@@ -430,7 +900,7 @@ const InventoryManager = () => {
               <div>
                 <p className="text-sm text-gray-600">Expired</p>
                 <p className="text-2xl font-bold text-red-500">
-                  {inventory.filter(item => isExpired(item.expiry_date)).length}
+                  {filteredInventory.filter(item => isExpired(item.expiry_date)).length}
                 </p>
               </div>
             </div>
@@ -458,7 +928,16 @@ const InventoryManager = () => {
                 </tr>
               </thead>
               <tbody>
-                {inventory.map((item) => (
+                {filteredInventory.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="text-center p-8 text-gray-500">
+                      {searchTerm || selectedCategoryFilter !== "all" || selectedBrandFilter !== "all" 
+                        ? "No items match your filters" 
+                        : "No inventory items found"}
+                    </td>
+                  </tr>
+                ) : (
+                  filteredInventory.map((item) => (
                   <tr key={item.id} className="border-b hover:bg-gray-50">
                     <td className="p-2">
                       <div>
@@ -483,9 +962,9 @@ const InventoryManager = () => {
                       </div>
                     </td>
                     <td className="p-2">
-                      <div>₹{item.selling_price.toFixed(2)}</div>
+                      <div>Rs. {item.selling_price.toFixed(2)}</div>
                       <div className="text-xs text-gray-500">
-                        Cost: ₹{item.purchase_price.toFixed(2)}
+                        Cost: Rs. {item.purchase_price.toFixed(2)}
                       </div>
                     </td>
                     <td className="p-2">
@@ -505,12 +984,17 @@ const InventoryManager = () => {
                       </div>
                     </td>
                     <td className="p-2">
-                      <Button variant="outline" size="sm">
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={() => handleEditInventory(item)}
+                      >
                         <Edit className="h-3 w-3" />
                       </Button>
                     </td>
                   </tr>
-                ))}
+                  ))
+                )}
               </tbody>
             </table>
           </div>

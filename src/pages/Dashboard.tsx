@@ -32,12 +32,12 @@ const Dashboard = () => {
       color: "from-teal-600 to-teal-700",
       welcomeMessage: "Welcome to your Pharmacy Dashboard",
       features: [
-        "POS System",
-        "Prescription Management", 
-        "Inventory Tracking",
-        "Customer Orders",
-        "Sales Reports",
-        "Supplier Network"
+        "POS System"
+        // "Prescription Management", 
+        // "Inventory Tracking",
+        // "Customer Orders",
+        // "Sales Reports",
+        // "Supplier Network"
       ]
     },
     doctor: {
@@ -131,7 +131,7 @@ const Dashboard = () => {
               <h1 className="text-2xl font-bold">{config.title}</h1>
             </div>
             <div className="flex items-center space-x-4">
-              <Button variant="ghost" size="sm" className="text-white hover:bg-white/20">
+              {/* <Button variant="ghost" size="sm" className="text-white hover:bg-white/20">
                 <Search className="h-4 w-4" />
               </Button>
               <Button variant="ghost" size="sm" className="text-white hover:bg-white/20">
@@ -139,7 +139,7 @@ const Dashboard = () => {
               </Button>
               <Button variant="ghost" size="sm" className="text-white hover:bg-white/20">
                 <Settings className="h-4 w-4" />
-              </Button>
+              </Button> */}
               <Button 
                 onClick={handleLogout}
                 variant="ghost" 
@@ -199,7 +199,7 @@ const Dashboard = () => {
         </div>
 
         {/* Features Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="flex flex-wrap gap-6 justify-center">
           {config.features.map((feature, index) => (
             <Card key={index} className="hover:shadow-lg transition-shadow duration-200 cursor-pointer">
               <CardHeader>

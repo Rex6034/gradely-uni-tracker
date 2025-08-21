@@ -275,7 +275,7 @@ const SalesReports = () => {
               <div>
                 <p className="text-sm text-gray-600">Total Sales</p>
                 <p className="text-2xl font-bold text-green-600">
-                  ₹{salesStats.totalSales.toFixed(2)}
+                  Rs. {salesStats.totalSales.toFixed(2)}
                 </p>
               </div>
             </div>
@@ -303,7 +303,7 @@ const SalesReports = () => {
               <div>
                 <p className="text-sm text-gray-600">Avg. Transaction</p>
                 <p className="text-2xl font-bold text-purple-600">
-                  ₹{salesStats.averageTransactionValue.toFixed(2)}
+                  Rs. {salesStats.averageTransactionValue.toFixed(2)}
                 </p>
               </div>
             </div>
@@ -383,7 +383,7 @@ const SalesReports = () => {
                       </td>
                       <td className="p-2">
                         <div className="font-bold text-green-600">
-                          ₹{transaction.total_amount.toFixed(2)}
+                          Rs. {transaction.total_amount.toFixed(2)}
                         </div>
                       </td>
                       <td className="p-2">

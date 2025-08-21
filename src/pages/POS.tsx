@@ -6,11 +6,10 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ShoppingCart, Search, Filter, Plus, Minus, Receipt, CreditCard, Banknote, Smartphone, Package, BarChart3, ArrowLeft } from "lucide-react";
+import { ShoppingCart, Search, Plus, Minus, Receipt, CreditCard, Banknote, Smartphone, Package, BarChart3, ArrowLeft, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -56,6 +55,9 @@ const POS = () => {
   const [loading, setLoading] = useState(true);
   const [processingPayment, setProcessingPayment] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [quantityInput, setQuantityInput] = useState("1");
+  const [selectedMedicine, setSelectedMedicine] = useState<Medicine | null>(null);
+  const [showQuantityDialog, setShowQuantityDialog] = useState(false);
   const { toast } = useToast();
 
   // Check authentication first
@@ -205,50 +207,85 @@ const POS = () => {
     }
   };
 
-  // Filter medicines
+  // Filter medicines (case-insensitive, robust like Inventory)
   useEffect(() => {
     let filtered = medicines;
 
-    if (searchTerm) {
-      filtered = filtered.filter(medicine =>
-        medicine.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        medicine.generic_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        medicine.brand_name.toLowerCase().includes(searchTerm.toLowerCase())
+    const searchLower = searchTerm.trim().toLowerCase();
+    if (searchLower) {
+      filtered = filtered.filter((medicine) =>
+        medicine.name.toLowerCase().includes(searchLower) ||
+        medicine.generic_name.toLowerCase().includes(searchLower) ||
+        medicine.brand_name.toLowerCase().includes(searchLower) ||
+        medicine.category_name.toLowerCase().includes(searchLower)
       );
     }
 
     if (selectedCategory !== "all") {
-      filtered = filtered.filter(medicine => medicine.category_name === selectedCategory);
+      filtered = filtered.filter(
+        (medicine) => medicine.category_name.toLowerCase() === selectedCategory.toLowerCase()
+      );
     }
 
     if (selectedBrand !== "all") {
-      filtered = filtered.filter(medicine => medicine.brand_name === selectedBrand);
+      filtered = filtered.filter(
+        (medicine) => medicine.brand_name.toLowerCase() === selectedBrand.toLowerCase()
+      );
     }
 
     setFilteredMedicines(filtered);
   }, [searchTerm, selectedCategory, selectedBrand, medicines]);
 
   const addToCart = (medicine: Medicine) => {
-    const existingItem = cart.find(item => item.inventory_id === medicine.inventory_id);
+    setSelectedMedicine(medicine);
+    setQuantityInput("1");
+    setShowQuantityDialog(true);
+  };
+
+  const handleQuantityConfirm = () => {
+    if (!selectedMedicine) return;
+    
+    const quantity = parseInt(quantityInput);
+    if (quantity <= 0) {
+      toast({
+        title: "Invalid Quantity",
+        description: "Please enter a valid quantity",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (quantity > selectedMedicine.quantity_in_stock) {
+      toast({
+        title: "Insufficient Stock",
+        description: `Only ${selectedMedicine.quantity_in_stock} units available`,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const existingItem = cart.find(item => item.inventory_id === selectedMedicine.inventory_id);
     
     if (existingItem) {
-      if (existingItem.quantity >= medicine.quantity_in_stock) {
-        toast({
-          title: "Insufficient Stock",
-          description: `Only ${medicine.quantity_in_stock} units available`,
-          variant: "destructive",
-        });
-        return;
-      }
-      updateCartQuantity(medicine.inventory_id, existingItem.quantity + 1);
+      // Update existing cart item quantity
+      updateCartQuantity(selectedMedicine.inventory_id, quantity);
     } else {
+      // Add new item to cart
       const cartItem: CartItem = {
-        ...medicine,
-        quantity: 1,
-        total: medicine.selling_price,
+        ...selectedMedicine,
+        quantity,
+        total: selectedMedicine.selling_price * quantity,
       };
       setCart(prev => [...prev, cartItem]);
     }
+
+    setShowQuantityDialog(false);
+    setSelectedMedicine(null);
+  };
+
+  const handleQuantityCancel = () => {
+    setShowQuantityDialog(false);
+    setSelectedMedicine(null);
   };
 
   const updateCartQuantity = (inventoryId: string, newQuantity: number) => {
@@ -269,6 +306,12 @@ const POS = () => {
       }
       return item;
     }));
+  };
+
+  const openQuantityDialog = (item: CartItem) => {
+    setSelectedMedicine(item);
+    setQuantityInput(item.quantity.toString());
+    setShowQuantityDialog(true);
   };
 
   const removeFromCart = (inventoryId: string) => {
@@ -440,6 +483,44 @@ const POS = () => {
             <SalesReports />
           </TabsContent>
         </Tabs>
+
+        {/* Quantity Dialog */}
+        <Dialog open={showQuantityDialog} onOpenChange={setShowQuantityDialog}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>
+                {selectedMedicine ? `Enter Quantity for ${selectedMedicine.name}` : "Enter Quantity"}
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div>
+                <Label htmlFor="quantity">Quantity</Label>
+                <Input
+                  id="quantity"
+                  type="number"
+                  min="1"
+                  max={selectedMedicine?.quantity_in_stock}
+                  value={quantityInput}
+                  onChange={(e) => setQuantityInput(e.target.value)}
+                  className="mt-1"
+                />
+                {selectedMedicine && (
+                  <p className="text-sm text-gray-500 mt-1">
+                    Max available: {selectedMedicine.quantity_in_stock}
+                  </p>
+                )}
+              </div>
+              <div className="flex gap-2">
+                <Button variant="outline" className="flex-1" onClick={handleQuantityCancel}>
+                  Cancel
+                </Button>
+                <Button className="flex-1" onClick={handleQuantityConfirm}>
+                  Confirm
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );
@@ -533,7 +614,7 @@ const POS = () => {
                             </div>
                             <div className="text-right ml-2">
                               <div className="font-bold text-lg text-primary">
-                                ₹{medicine.selling_price}
+                                Rs. {medicine.selling_price}
                               </div>
                               <div className="text-xs text-gray-500">
                                 Stock: {medicine.quantity_in_stock}
@@ -583,7 +664,7 @@ const POS = () => {
                         <div key={item.inventory_id} className="flex items-center justify-between p-2 border rounded">
                           <div className="flex-1">
                             <div className="font-medium text-sm">{item.name}</div>
-                            <div className="text-xs text-gray-500">₹{item.selling_price} each</div>
+                            <div className="text-xs text-gray-500">Rs. {item.selling_price} each</div>
                           </div>
                           <div className="flex items-center space-x-2">
                             <Button
@@ -593,7 +674,14 @@ const POS = () => {
                             >
                               <Minus className="h-3 w-3" />
                             </Button>
-                            <span className="w-8 text-center text-sm">{item.quantity}</span>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => openQuantityDialog(item)}
+                              className="min-w-[40px]"
+                            >
+                              {item.quantity}
+                            </Button>
                             <Button
                               size="sm"
                               variant="outline"
@@ -601,9 +689,16 @@ const POS = () => {
                             >
                               <Plus className="h-3 w-3" />
                             </Button>
+                            <Button
+                              size="sm"
+                              variant="destructive"
+                              onClick={() => removeFromCart(item.inventory_id)}
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
                           </div>
                           <div className="ml-2 font-medium text-sm">
-                            ₹{item.total.toFixed(2)}
+                            Rs. {item.total.toFixed(2)}
                           </div>
                         </div>
                       ))}
@@ -661,7 +756,7 @@ const POS = () => {
                 <div className="mb-4">
                   <div className="flex justify-between items-center text-lg font-bold">
                     <span>Total:</span>
-                    <span>₹{getCartTotal().toFixed(2)}</span>
+                    <span>Rs. {getCartTotal().toFixed(2)}</span>
                   </div>
                 </div>
 
