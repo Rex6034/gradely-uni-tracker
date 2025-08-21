@@ -1,9 +1,11 @@
-
+import { useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Building2, Stethoscope, Pill, User, LogOut, Settings, Bell, Search } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
+import { cleanupAuthState } from "@/lib/authCleanup";
 
 const Dashboard = () => {
   const { userType } = useParams<{ userType: string }>();
@@ -69,13 +71,39 @@ const Dashboard = () => {
   const config = userTypeConfig[userType as keyof typeof userTypeConfig];
   const Icon = config?.icon || User;
 
-  const handleLogout = () => {
+  useEffect(() => {
+    const init = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        navigate(`/login/${userType}`);
+        return;
+      }
+    };
+    init();
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_OUT' || !session) {
+        navigate(`/login/${userType}`);
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, [navigate, userType]);
+
+  const handleLogout = async () => {
+  try {
+    cleanupAuthState();
+    try {
+      await supabase.auth.signOut({ scope: 'global' });
+    } catch (err) {
+      // ignore
+    }
+  } finally {
     toast({
       title: "Logged Out",
       description: "You have been successfully logged out.",
     });
-    navigate("/");
-  };
+    window.location.href = "/";
+  }
+};
 
   if (!config) {
     return (

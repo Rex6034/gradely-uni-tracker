@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Building2, Stethoscope, Pill, User, ArrowLeft, Eye, EyeOff } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
 const Signup = () => {
@@ -65,7 +66,7 @@ const Signup = () => {
   const config = userTypeConfig[userType as keyof typeof userTypeConfig];
   const Icon = config?.icon || User;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (formData.password !== formData.confirmPassword) {
@@ -86,16 +87,54 @@ const Signup = () => {
       return;
     }
 
-    // Simulate registration process
-    toast({
-      title: "Registration Successful",
-      description: `Welcome to Easypharma! Your ${userType} account has been created.`,
-    });
+    try {
+      const redirectUrl = `${window.location.origin}/login/${userType}`;
+      const { error } = await supabase.auth.signUp({
+        email: formData.email,
+        password: formData.password,
+        options: {
+          emailRedirectTo: redirectUrl,
+          data: {
+            first_name: formData.firstName,
+            last_name: formData.lastName,
+            phone: formData.phone,
+            user_type: userType,
+            company_name: formData.companyName,
+            license_number: formData.licenseNumber,
+            address: formData.address,
+            city: formData.city,
+            state: formData.state,
+            zip_code: formData.zipCode,
+          }
+        }
+      });
 
-    // Simulate API call delay
-    setTimeout(() => {
-      navigate(`/dashboard/${userType}`);
-    }, 1500);
+      if (error) {
+        toast({
+          title: "Registration Failed",
+          description: error.message,
+          variant: "destructive"
+        });
+        return;
+      }
+
+      toast({
+        title: "Registration Successful",
+        description: "Please check your email to confirm your account.",
+      });
+
+      // Redirect to login
+      setTimeout(() => {
+        window.location.href = `/login/${userType}`;
+      }, 1200);
+
+    } catch (err: any) {
+      toast({
+        title: "Registration Error",
+        description: err.message || 'An unexpected error occurred',
+        variant: "destructive"
+      });
+    }
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {

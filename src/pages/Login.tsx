@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Building2, Stethoscope, Pill, User, ArrowLeft, Eye, EyeOff } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { cleanupAuthState } from "@/lib/authCleanup";
 
 const Login = () => {
   const { userType } = useParams<{ userType: string }>();
@@ -75,6 +76,14 @@ const Login = () => {
     }
 
     try {
+      // Clean up any previous auth state to prevent limbo
+      cleanupAuthState();
+      try {
+        await supabase.auth.signOut({ scope: 'global' });
+      } catch (e) {
+        // ignore
+      }
+
       const { data, error } = await supabase.auth.signInWithPassword({
         email: formData.email,
         password: formData.password,
@@ -95,7 +104,8 @@ const Login = () => {
           description: `Welcome back! Redirecting to your ${userType} dashboard...`,
         });
 
-        navigate(`/dashboard/${userType}`);
+        // Full page reload ensures clean state across the app
+        window.location.href = `/dashboard/${userType}`;
       }
     } catch (error: any) {
       toast({
