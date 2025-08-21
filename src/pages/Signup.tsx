@@ -450,7 +450,7 @@ const Signup = () => {
               </div>
 
               {/* Terms and Conditions */}
-              <div className="flex items-start space-x-2">
+              {/* <div className="flex items-start space-x-2">
                 <input
                   id="terms"
                   name="agreesToTerms"
@@ -470,7 +470,7 @@ const Signup = () => {
                     Privacy Policy
                   </Button>
                 </Label>
-              </div>
+              </div> */}
 
               <Button 
                 type="submit" 
