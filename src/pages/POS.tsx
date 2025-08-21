@@ -110,6 +110,7 @@ const POS = () => {
 
   const fetchData = async () => {
     try {
+      console.log('POS fetchData called');
       // Get current pharmacy
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
@@ -120,7 +121,12 @@ const POS = () => {
         .eq('user_id', user.id)
         .maybeSingle();
 
-      if (!pharmacy) return;
+      if (!pharmacy) {
+        console.log('No pharmacy found for user in POS');
+        return;
+      }
+      
+      console.log('Pharmacy found:', pharmacy.id, 'fetching inventory...');
 
       // Fetch inventory with medicine details
       const { data: inventoryData } = await supabase
@@ -148,6 +154,7 @@ const POS = () => {
         .gt('quantity_in_stock', 0);
 
       if (inventoryData) {
+        console.log('Raw inventory data:', inventoryData);
         const formattedMedicines: Medicine[] = inventoryData.map((item: any) => ({
           id: item.medicines.id,
           name: item.medicines.name,
@@ -161,8 +168,13 @@ const POS = () => {
           inventory_id: item.id,
           requires_prescription: item.medicines.requires_prescription || false,
         }));
+        console.log('Formatted medicines for POS:', formattedMedicines);
         setMedicines(formattedMedicines);
         setFilteredMedicines(formattedMedicines);
+      } else {
+        console.log('No inventory data found');
+        setMedicines([]);
+        setFilteredMedicines([]);
       }
 
       // Fetch categories
@@ -396,7 +408,11 @@ const POS = () => {
           </div>
         </div>
 
-        <Tabs defaultValue="pos" className="space-y-4">
+        <Tabs defaultValue="pos" className="space-y-4" onValueChange={(value) => {
+          if (value === 'pos') {
+            fetchData(); // Refresh POS data when switching to POS tab
+          }
+        }}>
           <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="pos" className="flex items-center">
               <ShoppingCart className="mr-2 h-4 w-4" />

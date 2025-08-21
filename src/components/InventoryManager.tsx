@@ -56,7 +56,7 @@ const InventoryManager = () => {
         .from('pharmacies')
         .select('id')
         .eq('user_id', user.id)
-        .single();
+        .maybeSingle();
 
       if (!pharmacy) return;
 
@@ -165,9 +165,9 @@ const InventoryManager = () => {
         .from('pharmacies')
         .select('id')
         .eq('user_id', user.id)
-        .single();
+        .maybeSingle();
 
-      if (pharmacyError) {
+      if (pharmacyError && pharmacyError.code !== 'PGRST116') {
         console.error('Pharmacy error:', pharmacyError);
         throw pharmacyError;
       }
